@@ -29,6 +29,7 @@ static bool too_many_loops (unsigned loops);
 static void busy_wait (int64_t loops);
 static void real_time_sleep (int64_t num, int32_t denom);
 static void real_time_delay (int64_t num, int32_t denom);
+void thread_check_unblock(void);
 
 /* Sets up the timer to interrupt TIMER_FREQ times per second,
    and registers the corresponding interrupt. */
@@ -92,8 +93,17 @@ timer_sleep (int64_t ticks)
   int64_t start = timer_ticks ();
 
   ASSERT (intr_get_level () == INTR_ON);
-  while (timer_elapsed (start) < ticks) 
-    thread_yield (); /* Yields the CPU.  The current thread is not put to sleep and may be scheduled again immediately at the scheduler's whim. */
+  // while (timer_elapsed (start) < ticks) 
+  //   thread_yield ();
+  if (ticks > 0)
+  {
+    enum intr_level old_level = intr_disable ();
+    thread_current ()-> blocked = 1;
+    thread_current ()-> max_wait_ticks =  ticks;
+    thread_block();
+    intr_set_level (old_level);
+  }
+  
 }
 
 /* Sleeps for approximately MS milliseconds.  Interrupts must be
@@ -122,7 +132,6 @@ timer_nsleep (int64_t ns)
 
 /* Busy-waits for approximately MS milliseconds.  Interrupts need
    not be turned on.
-
    Busy waiting wastes CPU cycles, and busy waiting with
    interrupts off for the interval between timer ticks or longer
    will cause timer ticks to be lost.  Thus, use timer_msleep()
@@ -135,7 +144,6 @@ timer_mdelay (int64_t ms)
 
 /* Sleeps for approximately US microseconds.  Interrupts need not
    be turned on.
-
    Busy waiting wastes CPU cycles, and busy waiting with
    interrupts off for the interval between timer ticks or longer
    will cause timer ticks to be lost.  Thus, use timer_usleep()
@@ -148,7 +156,6 @@ timer_udelay (int64_t us)
 
 /* Sleeps execution for approximately NS nanoseconds.  Interrupts
    need not be turned on.
-
    Busy waiting wastes CPU cycles, and busy waiting with
    interrupts off for the interval between timer ticks or longer
    will cause timer ticks to be lost.  Thus, use timer_nsleep()
@@ -165,13 +172,16 @@ timer_print_stats (void)
 {
   printf ("Timer: %"PRId64" ticks\n", timer_ticks ());
 }
-
+
 /* Timer interrupt handler. */
 static void
 timer_interrupt (struct intr_frame *args UNUSED)
 {
   ticks++;
   thread_tick ();
+  thread_foreach(thread_check_unblock,NULL);
+  //printf("%s waits for %"PRId64" \n",thread_current ()->name,thread_current ()->wait_ticks);
+  
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer
@@ -195,7 +205,6 @@ too_many_loops (unsigned loops)
 
 /* Iterates through a simple loop LOOPS times, for implementing
    brief delays.
-
    Marked NO_INLINE because code alignment can significantly
    affect timings, so that if this function was inlined
    differently in different places the results would be difficult
@@ -243,4 +252,16 @@ real_time_delay (int64_t num, int32_t denom)
      the possibility of overflow. */
   ASSERT (denom % 1000 == 0);
   busy_wait (loops_per_tick * num / 1000 * TIMER_FREQ / (denom / 1000)); 
+}
+
+/*Increase waiting ticks of thread*/
+void
+thread_check_unblock (void)
+{
+  (thread_current ()->max_wait_ticks)--;
+  if ((thread_current ()-> blocked) & (thread_current ()-> max_wait_ticks <= 0))
+  {
+  	thread_current ()-> blocked = 0;
+    thread_unblock();
+  }
 }
