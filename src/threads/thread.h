@@ -100,6 +100,10 @@ struct thread
 
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
+
+    int blocked;			// 1 if the thread is blocked by us
+    int64_t max_wait_ticks;
+
   };
 
 /* If false (default), use round-robin scheduler.

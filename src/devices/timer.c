@@ -30,6 +30,8 @@ static void busy_wait (int64_t loops);
 static void real_time_sleep (int64_t num, int32_t denom);
 static void real_time_delay (int64_t num, int32_t denom);
 
+void thread_checkBlock(struct thread *t, void *aux UNUSED);
+
 /* Sets up the timer to interrupt TIMER_FREQ times per second,
    and registers the corresponding interrupt. */
 void
@@ -89,11 +91,22 @@ timer_elapsed (int64_t then)
 void
 timer_sleep (int64_t ticks) 
 {
-  int64_t start = timer_ticks ();
+  // if ticks is <= 0 the function returns immediately
+  if (ticks > 0) { 
+	  printf("ticks === %"PRId64"\n", ticks); // debugging
+	  int64_t start = timer_ticks ();
 
-  ASSERT (intr_get_level () == INTR_ON);
-  while (timer_elapsed (start) < ticks) 
-    thread_yield (); /* Yields the CPU.  The current thread is not put to sleep and may be scheduled again immediately at the scheduler's whim. */
+	  ASSERT (intr_get_level () == INTR_ON);
+	 // while (timer_elapsed (start) < ticks) 
+	 //   thread_yield (); /* Yields the CPU.  The current thread is not put to sleep and may be scheduled again immediately at the scheduler's whim. */
+ 
+	  enum intr_level old_level = intr_disable ();
+	  thread_current()->blocked = 1;
+	  thread_current()->max_wait_ticks = ticks;
+	  printf("current thread === %s , ticks === %"PRId64"\n", thread_current()->name, thread_current()->max_wait_ticks); // debugging
+	  thread_block();
+	  intr_set_level (old_level);
+  }
 }
 
 /* Sleeps for approximately MS milliseconds.  Interrupts must be
@@ -165,14 +178,35 @@ timer_print_stats (void)
 {
   printf ("Timer: %"PRId64" ticks\n", timer_ticks ());
 }
-
+
+
+void thread_checkBlock(struct thread *t, void *aux UNUSED) {
+     //printf("Foreach works as ecpected :)\n");
+   
+     t->max_wait_ticks--;
+     
+     if (t->blocked == 1) {
+   	if (t->max_wait_ticks <= 0) {
+             t->blocked = 0;
+             thread_unblock(t);
+        }
+     }
+}
+
 /* Timer interrupt handler. */
 static void
 timer_interrupt (struct intr_frame *args UNUSED)
 {
   ticks++;
   thread_tick ();
+
+  //===================================//
+  
+  thread_foreach(thread_checkBlock, 0); 
+
 }
+
+
 
 /* Returns true if LOOPS iterations waits for more than one timer
    tick, otherwise false. */
