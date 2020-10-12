@@ -23,9 +23,17 @@ typedef struct {
 	int priority;
 } task_t;
 
-void batchScheduler(unsigned int num_tasks_send, unsigned int num_task_receive,
-        unsigned int num_priority_send, unsigned int num_priority_receive);
+//Global Variables
+int TasksOnBus;
+int waitersH[2];
+int waitersN[2];
+int CurrentDirection;
+//Condition Variables and Lock
+struct condition waitingToGO[2];
+struct lock mutex;
 
+
+void batchScheduler(unsigned int num_tasks_send, unsigned int num_task_receive, unsigned int num_priority_send, unsigned int num_priority_receive);
 void senderTask(void *);
 void receiverTask(void *);
 void senderPriorityTask(void *);
@@ -33,20 +41,23 @@ void receiverPriorityTask(void *);
 
 
 void oneTask(task_t task);/*Task requires to use the bus and executes methods below*/
-	void getSlot(task_t task); /* task tries to use slot on the bus */
-	void transferData(task_t task); /* task processes data on the bus either sending or receiving based on the direction*/
-	void leaveSlot(task_t task); /* task release the slot */
+void getSlot(task_t task); /* task tries to use slot on the bus */
+void transferData(task_t task); /* task processes data on the bus either sending or receiving based on the direction*/
+void leaveSlot(task_t task); /* task release the slot */
 
 
 
 /* initializes semaphores */ 
-void init_bus(void){ 
- 
+void init_bus(void)
+{  
     random_init((unsigned int)123456789); 
-    
-    msg("NOT IMPLEMENTED");
-    /* FIXME implement */
-
+    TasksOnBus = 0;
+    waitersH = {0, 0};
+    waitersN = {0, 0};
+    CurrentDirection = SENDER;
+    cond_init(waitingToGO[SENDER]);
+    cond_init(waitingToGO[RECEIVER]);
+    lock_init(&mutex);
 }
 
 /*
@@ -116,20 +127,58 @@ void oneTask(task_t task) {
 /* task tries to get slot on the bus subsystem */
 void getSlot(task_t task) 
 {
-    msg("NOT IMPLEMENTED");
-    /* FIXME implement */
+    lock_acquire(&mutex);
+    /* wait if cannot go on bridge */
+    while ((TasksOnBus == BUS_CAPACITY) || (TasksOnBus > 0 && task.direction != CurrentDirection))
+    {
+        if (task.priority == HIGH)
+        {
+            waitersH[task.direction]++;
+        }
+        else
+        {
+            waitersN[task.direction]++;
+        }        
+        cond_wait(&WaitingToGO[task.direction], &mutex);
+        if (task.priority == HIGH)
+        {
+            waitersH[task.direction]--;
+        }
+        else
+        {
+            waitersN[task.direction]--;
+        }      
+    }
+    /* get on the bridge */
+    TasksOnBus++;
+    CurrentDirection = task.direction;
+    lock_release(&mutex);
+    //thread_yield();
 }
 
 /* task processes data on the bus send/receive */
 void transferData(task_t task) 
 {
-    msg("NOT IMPLEMENTED");
-    /* FIXME implement */
+    /* sleep the thread for random amount of time*/
+    int64_t randomTicks = (int64_t) random_ulong() % 5;
+	timer_sleep(randomTicks);
 }
 
 /* task releases the slot */
 void leaveSlot(task_t task) 
 {
-    msg("NOT IMPLEMENTED");
-    /* FIXME implement */
+    lock_acquire(&mutex);
+    TasksOnBus--;
+    /* wake the tasks in current direction*/
+    if (waitersH[CurrentDirection] > 0)
+    {
+        cond_signal(&WaitingToGO[CurrentDirection], &mutex);
+    }
+    /* wake the tasks in current direction*/
+    else if (TasksOnBus == 0)
+    {
+        broadcast(&WaitingToGO[1 - CurrentDirection], &mutex);
+    }
+    lock_release(&mutex);
 }
+
