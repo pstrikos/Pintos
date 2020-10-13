@@ -55,8 +55,8 @@ void init_bus(void)
     waitersH = {0, 0};
     waitersN = {0, 0};
     CurrentDirection = SENDER;
-    cond_init(waitingToGO[SENDER]);
-    cond_init(waitingToGO[RECEIVER]);
+    cond_init(&waitingToGO[SENDER]);
+    cond_init(&waitingToGO[RECEIVER]);
     lock_init(&mutex);
 }
 
@@ -160,7 +160,7 @@ void getSlot(task_t task)
 void transferData(task_t task) 
 {
     /* sleep the thread for random amount of time*/
-    int64_t randomTicks = (int64_t) random_ulong() % 5;
+    int64_t randomTicks = ((int64_t) random_ulong() % 5) + 1;
 	timer_sleep(randomTicks);
 }
 
@@ -181,4 +181,5 @@ void leaveSlot(task_t task)
     }
     lock_release(&mutex);
 }
+
 
