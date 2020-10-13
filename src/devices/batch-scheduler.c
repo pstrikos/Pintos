@@ -7,6 +7,7 @@
 #include "threads/synch.h"
 #include "threads/thread.h"
 #include "lib/random.h" //generate random numbers
+#include "devices/timer.h"
 
 #define BUS_CAPACITY 3
 #define SENDER 0
@@ -26,7 +27,6 @@ typedef struct {
 //Global Variables
 int TasksOnBus;
 int waitersH[2];
-int waitersN[2];
 int CurrentDirection;
 //Condition Variables and Lock
 struct condition waitingToGO[2];
@@ -52,8 +52,9 @@ void init_bus(void)
 {  
     random_init((unsigned int)123456789); 
     TasksOnBus = 0;
-    waitersH = {0, 0};
-    waitersN = {0, 0};
+    waitersH[0] = 0;
+    waitersH[1] = 0;
+    waitersH[1] = 0;
     CurrentDirection = SENDER;
     cond_init(&waitingToGO[SENDER]);
     cond_init(&waitingToGO[RECEIVER]);
@@ -135,19 +136,11 @@ void getSlot(task_t task)
         {
             waitersH[task.direction]++;
         }
-        else
-        {
-            waitersN[task.direction]++;
-        }        
-        cond_wait(&WaitingToGO[task.direction], &mutex);
+        cond_wait(&waitingToGO[task.direction], &mutex);
         if (task.priority == HIGH)
         {
             waitersH[task.direction]--;
         }
-        else
-        {
-            waitersN[task.direction]--;
-        }      
     }
     /* get on the bridge */
     TasksOnBus++;
@@ -172,12 +165,12 @@ void leaveSlot(task_t task)
     /* wake the tasks in current direction*/
     if (waitersH[CurrentDirection] > 0)
     {
-        cond_signal(&WaitingToGO[CurrentDirection], &mutex);
+        cond_signal(&waitingToGO[CurrentDirection], &mutex);
     }
     /* wake the tasks in current direction*/
     else if (TasksOnBus == 0)
     {
-        broadcast(&WaitingToGO[1 - CurrentDirection], &mutex);
+        cond_broadcast(&waitingToGO[1 - CurrentDirection], &mutex);
     }
     lock_release(&mutex);
 }
